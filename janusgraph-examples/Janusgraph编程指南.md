@@ -18,6 +18,8 @@ JanusGraph是可扩展的图形数据库，已优化用于存储和查询包含�
 
 ## 安装
 
+### 部署Janusgraph
+
 ①安装jdk，安装HBase、安装elasticsearch-6.3.0，由于前面很多文章讲解关于HBase安装环境，这里就不在赘述了。这里写一下Elasticsearch的安装步骤。
 
 ```PowerShell
@@ -291,7 +293,7 @@ gremlin> g = graph.traversal()
 ==>graphtraversalsource[standardjanusgraph[hbase:[CentOS]], standard]
 ```
 
-## 安装[graphexp](https://github.com/bricaud/graphexp)
+### 安装[graphexp](https://github.com/bricaud/graphexp)
 
 ①安装nginx服务
 
@@ -456,9 +458,9 @@ nginx: configuration file /usr/local/nginx-1.16.1/conf/nginx.conf test is succes
 [root@CentOS nginx-1.16.1]# ./sbin/nginx
 ```
 
-![img](./assets/image-20210324104947478.png)
+![image-20210324104947478](assets/image-20210324104947478.png)
 
-## Java API集成
+## Java API Intergation
 
 ①导入maven依赖
 
@@ -468,7 +470,14 @@ nginx: configuration file /usr/local/nginx-1.16.1/conf/nginx.conf test is succes
     <groupId>org.janusgraph</groupId>
     <artifactId>janusgraph-core</artifactId>
     <version>0.5.3</version>
+    <exclusions>
+        <exclusion>
+            <artifactId>commons-logging</artifactId>
+            <groupId>commons-logging</groupId>
+        </exclusion>
+    </exclusions>
 </dependency>
+
 <!-- https://mvnrepository.com/artifact/org.janusgraph/janusgraph-hbase -->
 <dependency>
     <groupId>org.janusgraph</groupId>
@@ -481,6 +490,12 @@ nginx: configuration file /usr/local/nginx-1.16.1/conf/nginx.conf test is succes
     <groupId>org.janusgraph</groupId>
     <artifactId>janusgraph-es</artifactId>
     <version>0.5.3</version>
+    <exclusions>
+        <exclusion>
+            <artifactId>logback-classic</artifactId>
+            <groupId>ch.qos.logback</groupId>
+        </exclusion>
+    </exclusions>
 </dependency>
 <!-- https://mvnrepository.com/artifact/org.janusgraph/janusgraph-driver -->
 <dependency>
@@ -493,5 +508,265 @@ nginx: configuration file /usr/local/nginx-1.16.1/conf/nginx.conf test is succes
     <groupId>org.apache.hbase</groupId>
     <artifactId>hbase-client</artifactId>
     <version>2.0.2</version>
+    <exclusions>
+        <exclusion>
+            <artifactId>commons-logging</artifactId>
+            <groupId>commons-logging</groupId>
+        </exclusion>
+    </exclusions>
+</dependency>
+
+<dependency>
+    <groupId>junit</groupId>
+    <artifactId>junit</artifactId>
+    <version>4.12</version>
+    <scope>test</scope>
 </dependency>
 ```
+
+②引入log4j.proeprties
+
+```properties
+### 设置###
+log4j.rootLogger = ERROR,stdout
+
+log4j.logger.com.jiangzz=debug
+### 输出信息到控制抬 ###
+log4j.appender.stdout = org.apache.log4j.ConsoleAppender
+log4j.appender.stdout.Target = System.out
+log4j.appender.stdout.layout = org.apache.log4j.PatternLayout
+log4j.appender.stdout.layout.ConversionPattern = [%p] %d{yyyy-MM-dd HH:mm:ss} %c - %m%n
+```
+
+## Schema & Data Modeling
+
+每个JanusGraph图具有一个schema ，该schema 包括其中使用的edge labels, property keys和vertex labels。 可以显式或隐式定义JanusGraph schema 。 鼓励用户在应用程序开发期间明确定义JanusGraph Schema。 显式定义的架构是鲁棒图应用程序的重要组成部分，可以极大地改善协作软件的开发。 请注意，JanusGraph Schema可以随着时间的推移而演变，而不会中断正常的数据库操作。 扩展架构不会减慢查询的响应速度，也不需要数据库停机。
+
+首次创建时，将schema type（edge labels, property keys和vertex labels）分配给图形中的元素-即分别为edge，property 或vertex 。 不能为特定元素更改分配的schema type。 这确保了易于推理的稳定类型系统。
+
+### Schema信息
+
+有一些方法可以在管理API中查看图形Schema的特定元素。 这些方法是mgmt.printIndexes（），mgmt.printPropertyKeys（），mgmt.printVertexLabels（）和mgmt.printEdgeLabels（）。 还有一种方法可以显示所有名为printSchema（）的组合输出。
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//边Label信息
+String edgeLabels = mgmt.printEdgeLabels();
+//顶点Label信息
+String vertexLabels = mgmt.printVertexLabels();
+//属性信息
+String propertyKeys = mgmt.printPropertyKeys();
+//索引信息
+String indexes = mgmt.printIndexes();
+
+//全量信息，涵盖edge、vertex、property、index等
+String schema = mgmt.printSchema();
+```
+
+附录：
+
+```java
+JanusGraphFactory.Builder builder = JanusGraphFactory.build()
+                .set("storage.hostname", "CentOS")
+                .set("storage.backend", "hbase")
+                .set("storage.hbase.table", "janusgraph")
+                .set("index.search.backend", "elasticsearch")
+                .set("index.search.hostname", "CentOS");
+JanusGraph janusGraph = builder.open();
+//TODO LIST
+janusGraph.close();
+```
+
+###  Edge Labels
+
+连接两个顶点的每个边都有一个标签，用于定义关系的语义。 例如，顶点A和顶点B之间标记为`friend`的edge编码了两个人之间的友谊。
+
+要定义边缘标签，请在打开的janusGraph或mgmt 事务上调用`makeEdgeLabel（String）`并提供边缘标签的名称作为参数。 边缘标签名称在图中必须唯一。 此方法返回允许定义其多重性的边标签生成器。 边缘标签的多重性定义了该标签所有边缘上的多重性约束，即，成对的顶点之间的最大边缘数。 JanusGraph可以识别以下多重设置。
+
+- Edge Label Multiplicity
+
+  - MULTI - 允许在任意一对顶点之间使用同一标签的多个边。 换句话说，该图是关于这种边缘标签的多重图。 边缘多重性没有限制。
+
+  - SIMPLE - 在任何一对顶点之间最多允许该标签的一个边缘。 换句话说，该图是关于标签的简单图。 确保给定标签和成对的顶点的边是唯一的。
+  - MANY2ONE - 在图形的任何顶点上最多允许该标签的一个输出边缘，但对输入边缘不施加任何限制。 边缘标签母亲是MANY2ONE多重性的一个例子，因为每个人最多有一个母亲，但是母亲可以有多个孩子。
+  - ONE2MANY - 在图形的任何顶点上最多允许该标签的一个输入边缘，但对输出边缘不施加任何限制。 边缘标签winnerOf是一个具有ONE2MANY多重性的示例，因为每个竞赛最多只能由一个人赢得，但是一个人可以赢得多个竞赛。
+  - ONE2ONE - 在图形的任何顶点上最多允许该标签的一个输入边缘和一个输出边缘。 因为一个人与另一个人结婚，所以边缘标签“marriedTo ”是ONE2ONE多重性的一个示例。
+
+![image-20210324133125421](assets/image-20210324133125421.png)
+
+这里需要区分SIMPLE和ONE2ONE的区别，如上图所示，SIMPLE强调的是在任意两个顶点之间关系有且仅有一条唯一的关系，例如老师和多个学生之间就存在着`师生`关系，因此这种关系一旦在两个顶点建立，不予许出现重复；ONE2ONE强调的是仅仅允许该边和图中的一个顶点产生关系，不允许和其他节点产生类似关系，例如上图中一个女士仅仅只能存在一个`丈夫`关系属性，不可以和其他人建立该关系；
+
+默认的多重性是MULTI。 边缘标签的定义是通过在构建器上调用make（）方法完成的，该方法返回定义的边缘标签，如以下示例所示。
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//默认开启事物
+mgmt.makeEdgeLabel("mother").multiplicity(Multiplicity.MANY2ONE).make();
+mgmt.makeEdgeLabel("husband").multiplicity(Multiplicity.ONE2ONE).make();
+mgmt.commit();
+```
+
+### Property Key
+
+顶点和边上的属性是键值对。 例如，属性`name='Daniel'`具有`name`键和以及值`Daniel` .  Property key是JanusGraph Schema的一部分，可以限制允许的数据类型和值的基数。
+
+要定义Property key，请在打开的janusGraph或mgmt 事务上调用makePropertyKey（String）并提供属性键的名称作为参数。 属性键名称在图中必须是唯一的，建议避免在属性名称中使用空格或特殊字符。 此方法返回属性键的生成器。
+
+**Note**：在创建属性键时，请考虑也创建图形索引以获得更好的性能，请参阅[Index Performance](https://docs.janusgraph.org/index-management/index-performance/).
+
+使用dataType（Class）定义属性键的数据类型。 JanusGraph将强制与键关联的所有值都具有配置的数据类型，从而确保添加到图的数据有效。 例如，可以定义名称键具有String数据类型。 请注意，不支持primitive 类型。 使用相应的包装器类，例如Integer而不是int .
+
+将数据类型定义为Object.class，以允许任何（可序列化的）值与键相关联。 但是，建议尽可能使用具体的数据类型。 配置的数据类型必须是具体的类，而不是接口或抽象类。 JanusGraph强制执行类相等性，因此不允许添加已配置数据类型的子类。
+
+| Name      | Description                                      |
+| :-------- | :----------------------------------------------- |
+| String    | Character sequence                               |
+| Character | Individual character                             |
+| Boolean   | true or false                                    |
+| Byte      | byte value                                       |
+| Short     | short value                                      |
+| Integer   | integer value                                    |
+| Long      | long value                                       |
+| Float     | 4 byte floating point number                     |
+| Double    | 8 byte floating point number                     |
+| Date      | Specific instant in time (`java.util.Date`)      |
+| Geoshape  | Geographic shape like point, circle or box       |
+| UUID      | Universally unique identifier (`java.util.UUID`) |
+
+使用基数（Cardinality）定义与任何给定顶点上的键关联的值的允许基数。
+
+- Property Key Cardinality
+  - SINGLE - 此键的每个元素最多允许一个值。 换句话说，键→值映射对于图形中的所有元素都是唯一的。 属性birthDate是单基数的示例，因为每个人都有一个确切的生日。
+  - LIST - 允许该键的每个元素具有任意数量的值。 换句话说，键与允许重复值的值列表相关联。 假设我们将传感器建模为图形中的顶点，则属性键sensorVals是一个具有LIST基数的示例，可以记录很多（可能重复的）传感器读数。
+  - SET - 此类键的每个元素允许多个值，但不允许重复值。 换句话说，键与一组值相关联。 如果我们要捕获个人的所有name（包括昵称，姓等），则属性键名称具有SET基数。
+
+默认基数设置为SINGLE。 请注意，在边缘和属性上使用的属性键的基数为SINGLE。 不支持在边缘或属性上为单个键附加多个值。
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//默认开启事物
+mgmt.makePropertyKey("birthDate").dataType(Long.class).cardinality(Cardinality.SINGLE).make();
+mgmt.makePropertyKey("name").dataType(String.class).cardinality(Cardinality.SET).make();
+mgmt.makePropertyKey("sensorVals").dataType(Double.class).cardinality(Cardinality.LIST).make();
+mgmt.commit();
+```
+
+### Relation Types
+
+边缘标签和属性键共同称为关系类型。 关系类型的名称在图中必须唯一，这意味着属性键和边标签不能具有相同的名称。 JanusGraph API中提供了一些方法来查询是否存在或检索关系类型，这些类型同时包含属性键和边标签。
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+
+if (mgmt.containsRelationType("name")) {
+    PropertyKey name = mgmt.getPropertyKey("name");
+    LOGGER.info("label {} name {}",name.label(),name.name());
+}
+Iterable<EdgeLabel> relationTypes = mgmt.getRelationTypes(EdgeLabel.class);
+for (EdgeLabel relationType : relationTypes) {
+    LOGGER.info("label {} name {}",relationType.label(),relationType.name());
+}
+mgmt.commit();
+```
+
+### Vertex Labels
+
+像Edges一样，Vertex 也有Label。 与EdgeLabel不同，Vertex Label是可选的。 Vertex Label可用于区分不同类型的顶点，例如 用户顶点和产品顶点。
+
+尽管Label在概念和数据模型级别是可选的，但JanusGraph会为所有顶点分配标签作为内部实现细节。 由addVertex方法创建的顶点使用JanusGraph的默认标签。
+
+要创建Label，请在打开的图形或管理事务上调用makeVertexLabel(String).make()并提供Vertex Label的名称作为参数。 Vertex Label名称在图中必须唯一。
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//创建一个person Label
+VertexLabel personLabel = mgmt.makeVertexLabel("person").make();
+mgmt.commit();
+```
+
+```java
+personLabel = janusGraph.getVertexLabel("person");
+//创建一个Person Label 顶点
+JanusGraphVertex personVertex = janusGraph.addVertex(T.label,personLabel,"name","jiangzz");
+//默认顶点类型
+JanusGraphVertex nonLabelVertex = janusGraph.addVertex();
+janusGraph.tx().commit();
+```
+
+如果未明确定义 edge label, property key或者vertex label ，则在添加边，顶点或属性设置期间首次使用时将隐式定义。 为JanusGraph图配置的DefaultSchemaMaker定义了此类类型。
+
+默认情况下，隐式创建的Edge Label具有多重性MULTI，而隐式创建的Property Key具有基数SINGLE和数据类型Object.class。 用户可以通过实现和注册自己的DefaultSchemaMaker来控制自动模式元素的创建.
+
+强烈建议通过在JanusGraph图形配置中设置schema.default = none来显式定义所有架构元素并禁用自动架构创建。
+
+Edge Label，Property Key或Vertex Label的定义一旦提交到图形中就无法更改。 但是，可以通过JanusGraphManagement.changeName(JanusGraphSchemaElement，String)更改架构元素的名称，如以下示例所示，其中将属性键位置重命名为location。
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+PropertyKey birthDate = mgmt.getPropertyKey("birthDate");
+mgmt.changeName(birthDate,"birthDay");
+mgmt.commit();
+```
+
+请注意，架构名称更改在群集中当前正在运行的事务和其他JanusGraph图形实例中可能不会立即可见。虽然通过存储后端向所有JanusGraph实例宣布了架构名称更改，但是架构更改可能需要一段时间才能生效，并且在某些故障情况（例如网络分区）发生的情况下，可能需要重启实例，如果它们与重命名。因此，用户必须确保以下任一条件成立：
+
+- 重命名的Label或Property Key当前未处于活动状态（即已写入或读取），并且直到所有JanusGraph实例都知道名称更改后才会使用。
+- 正在运行的事务会主动适应短暂的中间时间段，根据特定的JanusGraph实例和名称更改公告的状态，旧名称或新名称均有效。 例如，这可能意味着事务同时查询两个名称。
+
+如果需要重新定义现有的架构类型，建议将这种类型的名称更改为当前（永远不会）使用的名称。 之后，可以使用原始名称定义新的Label或PropertyKey，从而有效地替换旧的标签或密钥。 但是，请注意，这不会影响以前使用现有类型编写的Vertex，Edge或Property。 在线不支持重新定义现有图形元素，必须通过批处理图形转换来完成。
+
+### Schema Constraints
+
+模式的定义允许用户配置显式属性和连接约束。 可以将属性绑定到特定的Vertex Label或Edge Label。 此外，Connect Constraints允许用户显式定义可以通过边缘标签连接的Vertex Label。 这些约束可用于确保图与给定的域模型匹配。 例如，对于`god`的graph，一个`god`可以是另一个`god`的brother，但不能是`monster `的兄弟，一个`god`可以有age属性，但是`location`不能有age属性。 这些约束默认情况下处于禁用状态。
+
+通过设置`schema.constraints = true`启用这些架构约束。此设置取决于设置`schema.default`。如果配置`schema.default`设置为none，则将因Schema Constraints冲突而抛出IllegalArgumentException。如果未将schema.default设置为none，则将自动创建架构约束，但不会引发任何异常。激活Schema Constraints对现有数据没有影响，因为这些Schema Constraints仅在插入过程中应用。因此，这些约束根本不会影响数据的读取。
+
+可以使用JanusGraphManagement.addProperties（VertexLabel，PropertyKey ...）将多个属性绑定到一个顶点，例如：
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//获取现有属性定义
+PropertyKey birthDay = mgmt.getPropertyKey("birthDay");
+PropertyKey name = mgmt.getPropertyKey("name");
+//获取顶点标签
+VertexLabel personLabel = mgmt.getVertexLabel("person");
+//绑定标签属性
+mgmt.addProperties(personLabel,birthDay,name);
+mgmt.commit();
+```
+
+同时可以使用JanusGraphManagement.addProperties（EdgeLabel，PropertyKey ...）将多个属性绑定到一条边，例如：
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//获取现有属性定义
+PropertyKey birthDay = mgmt.getPropertyKey("birthDay");
+//获取顶点标签
+EdgeLabel mother = mgmt.getEdgeLabel("mother");
+//绑定标签属性
+mgmt.addProperties(mother,birthDay);
+mgmt.commit();
+```
+
+可以使用JanusGraphManagement.addConnection（EdgeLabel，VertexLabel输出，VertexLabel输入）在传出，传入和边缘之间定义连接，例如：
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+//创建 person 定点 label
+VertexLabel personLabel = mgmt.getVertexLabel("person");
+//创建 mother 边   label
+EdgeLabel motherEdgeLabel = mgmt.getEdgeLabel("mother");
+//将 使用mother的边关系连接两个person节点信息
+mgmt.addConnection(motherEdgeLabel,personLabel,personLabel);
+mgmt.commit();
+```
+
+**Note**：需要在`janusgraph-hbase-es.properties`添加如下配置，重启服务器！
+
+```properties
+schema.constraints=true
+schema.default=none
+```
+
+
+
