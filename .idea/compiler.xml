@@ -10,7 +10,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="janusgraph-examples" target="1.5" />
+      <module name="janusgraph-examples" target="8" />
     </bytecodeTargetLevel>
   </component>
 </project>

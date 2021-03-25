@@ -768,5 +768,56 @@ schema.constraints=true
 schema.default=none
 ```
 
+## Advanced Schema
 
+### Static Vertices
+
+顶点标签可以定义为静态，这意味着带有该标签的顶点不能在创建它们的事务之外进行修改。Static vertex labels 
+
+是一方法用于控制数据的生命周期，在加载数据到graph之后 ，使用定点的标签数据不允许修改。例如创建如下VertexLabel 标签：
+
+```java
+JanusGraphManagement mgmt = janusGraph.openManagement();
+
+VertexLabel tweet = mgmt.makeVertexLabel("tweet").setStatic().make();
+
+PropertyKey birthDay = mgmt.getPropertyKey("birthDay");
+PropertyKey sensorReading = mgmt.getPropertyKey("sensorReading");
+//绑定属性信息
+mgmt.addProperties(tweet,birthDay,sensorReading);
+mgmt.commit();
+
+```
+
+创建该Label的定点,并且提交事务
+
+```java
+janusGraph.addVertex(T.label, "tweet", "birthDay", System.currentTimeMillis());
+janusGraph.tx().commit();
+```
+
+然后尝试更新该定点数据
+
+```java
+GraphTraversalSource traversal = janusGraph.traversal();
+//查询为tweet的定点数据
+Vertex tweet = traversal.V().has(T.label, "tweet").next();
+//尝试修改该定点属性
+tweet.property("birthDay",System.currentTimeMillis());
+janusGraph.tx().commit();
+```
+
+抛出：`org.janusgraph.core.SchemaViolationException: Cannot modify unmodifiable vertex`信息
+
+### Edge  & Vertex TTL
+
+可以使用生存时间（TTL）来配置Edge和Vertex标签。初始创建后，已配置的TTL经过时，带有此类标签的边和顶点将自动从图形中删除。当将大量数据仅临时使用地加载到图形中时，TTL配置很有用。定义TTL消除了手动清理的需要，并非常有效地处理了删除操作。例如，对于TTL事件边缘（例如用户页面访问）是有意义的，例如在一段时间后或不再需要分析或操作查询处理时对用户页面访问进行汇总。一下的存储 backends 支持 edge 和 vertex TTL.
+
+- Cassandra
+- HBase
+- BerkeleyDB - supports only hour-discrete TTL, thus the minimal TTL is one hour.
+
+#### Edge TTL
+
+Edge TTL是在每个Edge Label的基础上定义的，这意味着该标签的所有边缘具有相同的生存时间。请注意，后端必须支持单元级别的TTL。当前，只有Cassandra，HBase和BerkeleyDB支持此功能。
 

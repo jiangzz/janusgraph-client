@@ -1,5 +1,6 @@
 package com.jiangzz;
 
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.T;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
@@ -12,7 +13,9 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Date;
+import java.util.Map;
 
 public class JanusgraphSchemaTests {
     private static final Logger LOGGER= LoggerFactory.getLogger(JanusgraphSchemaTests.class);
@@ -146,8 +149,61 @@ public class JanusgraphSchemaTests {
         Vertex lisiMother = traversal.V().has("name", "李四妈妈").next();
         lisi.addEdge("mother",lisiMother,"birthDay",System.currentTimeMillis());
         traversal.tx().commit();
+    }
 
+    @Test
+    public void testStaticTable(){
+        JanusGraphManagement mgmt = janusGraph.openManagement();
 
+        VertexLabel tweet = mgmt.makeVertexLabel("tweet").setStatic().make();
+
+        PropertyKey birthDay = mgmt.getPropertyKey("birthDay");
+        PropertyKey sensorReading = mgmt.getPropertyKey("sensorReading");
+
+        mgmt.addProperties(tweet,birthDay,sensorReading);
+        mgmt.commit();
+    }
+    @Test
+    public void testUpdateStaticTable01(){
+         janusGraph.addVertex(T.label, "tweet", "birthDay", System.currentTimeMillis());
+         janusGraph.tx().commit();
+    }
+    @Test
+    public void testUpdateStaticTable02(){
+        GraphTraversalSource traversal = janusGraph.traversal();
+        Vertex tweet = traversal.V().has(T.label, "tweet").next();
+        //System.out.println(tweet.<Long>value("birthDay"));
+        //1616665131192
+        tweet.property("birthDay",System.currentTimeMillis());
+        janusGraph.tx().commit();
+    }
+    @Test
+    public void testEdgeTTL01(){
+        JanusGraphManagement mgmt = janusGraph.openManagement();
+        VertexLabel person = mgmt.getVertexLabel("person");
+        EdgeLabel visits = mgmt.makeEdgeLabel("visits").multiplicity(Multiplicity.ONE2ONE).make();
+        mgmt.setTTL(visits, Duration.ofSeconds(10));
+
+        mgmt.addConnection(visits,person,person);
+        mgmt.commit();
+    }
+    @Test
+    public void testTTL02(){
+
+        GraphTraversalSource traversal = janusGraph.traversal();
+        Vertex lisi = traversal.V().has("name", "李四").next();
+        Vertex lisiMother = traversal.V().has("name", "李四妈妈").next();
+        lisi.addEdge("visits",lisiMother);
+
+        traversal.tx().commit();
+    }
+    @Test
+    public void testTTL03(){
+
+        GraphTraversalSource traversal = janusGraph.traversal();
+        GraphTraversal<Vertex, Map<Object, Object>> vertexMapGraphTraversal = traversal.V().outE("visits").inV().valueMap("name");
+
+        System.out.println(vertexMapGraphTraversal);
     }
 
     @Test
